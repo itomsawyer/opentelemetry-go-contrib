@@ -113,6 +113,7 @@ func (h *host) register() error {
 
 		hostMemoryUsage       metric.Int64ObservableGauge
 		hostMemoryUtilization metric.Float64ObservableGauge
+		fileDescriptorUsage   metric.Int64ObservableGauge
 
 		networkIOUsage metric.Int64ObservableCounter
 
@@ -175,6 +176,16 @@ func (h *host) register() error {
 		return err
 	}
 
+	if fileDescriptorUsage, err = h.meter.Int64ObservableGauge(
+		"process.fds.num",
+		metric.WithUnit("1"),
+		metric.WithDescription(
+			"FDs opened by this process",
+		),
+	); err != nil {
+		return err
+	}
+
 	if networkIOUsage, err = h.meter.Int64ObservableCounter(
 		"system.network.io",
 		metric.WithUnit("By"),
@@ -196,6 +207,11 @@ func (h *host) register() error {
 			// TODO: the Collector has per-OS compilation modules to support
 			// specific metrics that are not universal.
 			processTimes, err := proc.TimesWithContext(ctx)
+			if err != nil {
+				return err
+			}
+
+			numfds, err := proc.NumFDs()
 			if err != nil {
 				return err
 			}
@@ -262,6 +278,8 @@ func (h *host) register() error {
 			opt = metric.WithAttributeSet(AttributeMemoryAvailable)
 			o.ObserveFloat64(hostMemoryUtilization, float64(vmStats.Available)/float64(vmStats.Total), opt)
 
+			o.ObserveInt64(fileDescriptorUsage, int64(numfds))
+
 			// Host network usage
 			//
 			// TODO: These can be broken down by network
@@ -278,6 +296,7 @@ func (h *host) register() error {
 		hostCPUTime,
 		hostMemoryUsage,
 		hostMemoryUtilization,
+		fileDescriptorUsage,
 		networkIOUsage,
 	)
 	if err != nil {
